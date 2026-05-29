@@ -1,0 +1,1788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Chat Overlay</title>
+<style>
+:root {
+  --bg: #080808;
+  --panel: rgba(255,255,255,0.03);
+  --border: rgba(255,255,255,0.08);
+  --border2: rgba(255,255,255,0.14);
+  --text: #f0ece8;
+  --muted: #555250;
+  --muted2: #8a8680;
+  --accent: #a855f7;
+  --green: #00e676;
+  --red: #ff3d3d;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; font-family: Inter, 'Segoe UI', system-ui, sans-serif; overflow: hidden; background: transparent; }
+
+/* ═══════════════════════════════
+   WIDGET
+═══════════════════════════════ */
+#widget {
+  display: none;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+#widget.show { display: flex; }
+
+/* Direction variants */
+#widget.dir-bottom {
+  flex-direction: column;
+  justify-content: flex-end;
+}
+#widget.dir-top {
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+/* Message list */
+#msg-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--msg-gap, 6px);
+  padding: var(--w-padding, 16px);
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Individual message */
+.msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  animation: msgIn 0.25s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+  max-width: 100%;
+}
+
+.msg.fade-out {
+  animation: msgOut 0.35s ease forwards;
+}
+
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes msgOut {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(-8px) scale(0.97); }
+}
+
+/* Message bubble */
+.msg-bubble {
+  background: var(--bubble-bg, rgba(0,0,0,0.55));
+  border-radius: var(--bubble-radius, 8px);
+  padding: var(--bubble-pad, 8px 12px);
+  backdrop-filter: blur(6px);
+  max-width: 100%;
+  line-height: 1.45;
+  border-left: var(--accent-bar-width, 0px) solid var(--msg-accent, transparent);
+  word-break: break-word;
+}
+
+/* No bubble style */
+.msg-bubble.no-bubble {
+  background: transparent;
+  backdrop-filter: none;
+  padding: var(--bubble-pad-nb, 2px 0);
+}
+
+/* Username */
+.msg-name {
+  font-weight: 600;
+  font-size: var(--name-size, 14px);
+  display: inline;
+  margin-right: 6px;
+  line-height: 1;
+}
+
+/* Message text */
+.msg-text {
+  font-size: var(--text-size, 14px);
+  color: var(--text-color, #f0ece8);
+  display: inline;
+  font-weight: var(--text-weight, 400);
+}
+
+/* Badges */
+.msg-badges {
+  display: inline-flex;
+  gap: 3px;
+  vertical-align: middle;
+  margin-right: 4px;
+}
+
+.msg-badges img {
+  width: 16px;
+  height: 16px;
+  vertical-align: middle;
+}
+
+/* Emotes */
+.msg-text img.emote {
+  height: calc(var(--text-size, 14px) * 1.6);
+  vertical-align: middle;
+  display: inline;
+}
+
+/* Timestamp */
+.msg-time {
+  font-size: 10px;
+  color: rgba(255,255,255,0.2);
+  font-family: monospace;
+  white-space: nowrap;
+  flex-shrink: 0;
+  align-self: flex-end;
+  padding-bottom: 2px;
+  display: none;
+}
+
+.show-time .msg-time { display: block; }
+
+/* ═══════════════════════════════
+   LIVE SETTINGS PANEL
+═══════════════════════════════ */
+#live-panel {
+  position: fixed;
+  top: 0; right: -320px;
+  width: 300px;
+  height: 100%;
+  background: rgba(10,10,14,0.97);
+  border-left: 1px solid var(--border2);
+  z-index: 500;
+  transition: right 0.3s cubic-bezier(0.34, 1.1, 0.64, 1);
+  overflow-y: auto;
+  backdrop-filter: blur(12px);
+  padding: 20px 16px 40px;
+}
+
+#live-panel.open { right: 0; }
+
+.lp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.lp-title {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.lp-keybind {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 7px;
+}
+
+.lp-close {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--muted2);
+  border-radius: 4px;
+  width: 24px; height: 24px;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+  line-height: 1;
+}
+.lp-close:hover { color: var(--text); border-color: var(--border2); }
+
+.lp-sec {
+  margin-bottom: 18px;
+}
+
+.lp-sec-label {
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.lp-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.lp-label {
+  font-size: 12px;
+  color: var(--muted2);
+  flex-shrink: 0;
+  min-width: 80px;
+}
+
+.lp-slider-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lp-slider-wrap input[type=range] {
+  flex: 1;
+  accent-color: var(--accent);
+  height: 3px;
+  cursor: pointer;
+  padding: 0;
+  border: none;
+  background: none;
+}
+
+.lp-val {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: var(--accent);
+  min-width: 32px;
+  text-align: right;
+}
+
+.lp-toggle {
+  width: 32px; height: 18px;
+  background: var(--border2);
+  border-radius: 99px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.lp-toggle.on { background: var(--accent); }
+.lp-toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 14px; height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+.lp-toggle.on::after { transform: translateX(14px); }
+
+.lp-seg {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+}
+
+.lp-seg-btn {
+  flex: 1;
+  padding: 5px 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted2);
+  font-family: 'Courier New', monospace;
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: center;
+}
+.lp-seg-btn.on {
+  background: rgba(168,85,247,0.12);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.lp-color-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.lp-color-row input[type=color] {
+  width: 28px; height: 28px;
+  border-radius: 4px;
+  padding: 2px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: none;
+  flex-shrink: 0;
+}
+
+.lp-font-select {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 11px;
+  color: var(--text);
+  outline: none;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+}
+.lp-font-select:focus { border-color: var(--accent); }
+.lp-font-select option { background: #111; }
+
+.lp-style-select {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 11px;
+  color: var(--text);
+  outline: none;
+  cursor: pointer;
+  font-family: 'Courier New', monospace;
+}
+.lp-style-select:focus { border-color: var(--accent); }
+.lp-style-select option { background: #111; }
+
+.lp-keybind-input {
+  flex: 1;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 11px;
+  color: var(--accent);
+  outline: none;
+  font-family: 'Courier New', monospace;
+  text-align: center;
+  cursor: pointer;
+}
+.lp-keybind-input:focus {
+  border-color: var(--accent);
+  background: rgba(168,85,247,0.08);
+}
+
+.lp-btn {
+  width: 100%;
+  padding: 8px;
+  background: rgba(168,85,247,0.12);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--accent);
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-top: 4px;
+}
+.lp-btn:hover { background: rgba(168,85,247,0.22); }
+.lp-btn.danger { border-color: var(--red); color: var(--red); background: rgba(255,61,61,0.08); }
+.lp-btn.danger:hover { background: rgba(255,61,61,0.18); }
+#setup {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 200;
+  overflow-y: auto;
+}
+
+.setup-inner { max-width: 620px; margin: 0 auto; padding: 40px 24px 80px; }
+
+.s-eyebrow {
+  font-family: 'Courier New', 'Lucida Console', monospace;
+  font-size: 10px;
+  letter-spacing: 0.25em;
+  color: var(--accent);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.s-title {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 6px;
+  letter-spacing: -0.02em;
+}
+
+.s-sub {
+  font-size: 14px;
+  color: var(--muted2);
+  line-height: 1.7;
+  margin-bottom: 32px;
+}
+
+.s-sec { margin-bottom: 28px; }
+
+.s-sec-label {
+  font-family: 'Courier New', 'Lucida Console', monospace;
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.fg { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.fg3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field.full { grid-column: 1 / -1; }
+
+label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted2);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+input[type=text], input[type=number], input[type=password], select {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 9px 13px;
+  font-family: Inter, 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.2s;
+  width: 100%;
+}
+
+input:focus, select:focus { border-color: var(--accent); }
+select option { background: #111; }
+input::placeholder { color: var(--muted); }
+
+/* Slider */
+.slider-row { display: flex; align-items: center; gap: 10px; }
+input[type=range] {
+  flex: 1;
+  accent-color: var(--accent);
+  height: 4px;
+  cursor: pointer;
+  padding: 0;
+  border: none;
+  background: none;
+}
+.slider-val {
+  font-family: 'Courier New', 'Lucida Console', monospace;
+  font-size: 12px;
+  color: var(--accent);
+  min-width: 42px;
+  text-align: right;
+}
+
+/* Toggle row */
+.toggle-row { display: flex; align-items: center; justify-content: space-between; }
+.toggle-label { font-size: 13px; color: var(--muted2); }
+
+.toggle {
+  width: 36px; height: 20px;
+  background: var(--border2);
+  border-radius: 99px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.2s;
+  flex-shrink: 0;
+}
+.toggle.on { background: var(--accent); }
+.toggle::after {
+  content: '';
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 14px; height: 14px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+.toggle.on::after { transform: translateX(16px); }
+
+/* Segment control */
+.seg { display: flex; gap: 4px; }
+.seg-btn {
+  flex: 1;
+  padding: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted2);
+  font-family: 'Courier New', 'Lucida Console', monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: center;
+}
+.seg-btn.on {
+  background: rgba(168,85,247,0.12);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Color picker row */
+.color-row { display: flex; align-items: center; gap: 10px; }
+.color-row input[type=color] {
+  width: 36px; height: 36px;
+  border-radius: 6px;
+  padding: 2px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.color-hex {
+  font-family: 'Courier New', 'Lucida Console', monospace;
+  font-size: 12px;
+  color: var(--muted2);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  width: 100px;
+}
+
+/* Font selector cards */
+.font-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.font-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  text-align: center;
+}
+.font-card:hover { border-color: var(--border2); }
+.font-card.on { border-color: var(--accent); background: rgba(168,85,247,0.06); }
+.font-card-name { font-size: 11px; color: var(--muted2); letter-spacing: 0.06em; margin-top: 6px; }
+.font-card-preview { font-size: 16px; color: var(--text); }
+
+/* Preset style cards */
+.style-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.style-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  aspect-ratio: 16/7;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 3px;
+}
+.style-card:hover { border-color: var(--border2); }
+.style-card.on { border-color: var(--accent); background: rgba(168,85,247,0.06); }
+.style-card-label { font-size: 10px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-top: 4px; }
+
+/* Live preview */
+.preview-area {
+  background: rgba(0,0,0,0.5);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  position: relative;
+  height: 200px;
+}
+.preview-inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 12px;
+  gap: 5px;
+}
+
+/* Buttons */
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.btn {
+  font-family: Inter, 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px; font-weight: 500;
+  padding: 10px 22px; border-radius: 6px;
+  border: none; cursor: pointer; transition: all 0.2s;
+}
+.btn-primary { background: var(--accent); color: #fff; box-shadow: 0 0 20px rgba(168,85,247,0.3); }
+.btn-primary:hover { filter: brightness(1.15); }
+.btn-ghost { background: var(--panel); border: 1px solid var(--border); color: var(--muted2); }
+.btn-ghost:hover { color: var(--text); border-color: var(--border2); }
+
+/* Auth */
+.auth-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: #6441a5; color: #fff; border: none;
+  border-radius: 6px; padding: 10px 18px;
+  font-family: Inter, 'Segoe UI', system-ui, sans-serif; font-size: 13px;
+  font-weight: 500; cursor: pointer; transition: background 0.2s;
+}
+.auth-btn:hover { background: #7b50c0; }
+.auth-ok { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--green); }
+.auth-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+
+.notice {
+  background: rgba(168,85,247,0.05);
+  border: 1px solid rgba(168,85,247,0.18);
+  border-radius: 8px; padding: 12px 16px;
+  font-size: 12px; color: var(--muted2); line-height: 1.6;
+  margin-bottom: 20px;
+}
+.notice strong { color: var(--text); }
+</style>
+</head>
+<body>
+
+<!-- ═══ WIDGET ══════════════════════════════════════ -->
+<div id="widget">
+  <div id="msg-list"></div>
+</div>
+
+<!-- ═══ LIVE SETTINGS PANEL ══════════════════════ -->
+<div id="live-panel">
+  <div class="lp-header">
+    <span class="lp-title">// Live Settings</span>
+    <button class="lp-close" onclick="closePanel()">✕</button>
+  </div>
+
+  <!-- TYPOGRAPHY -->
+  <div class="lp-sec">
+    <p class="lp-sec-label">Typography</p>
+    <div class="lp-row">
+      <span class="lp-label">Msg size</span>
+      <div class="lp-slider-wrap">
+        <input type="range" id="lp-font-size" min="10" max="32" value="15"
+          oninput="lpSlider('lp-font-size','lp-val-fs','px'); lpApply()">
+        <span class="lp-val" id="lp-val-fs">15px</span>
+      </div>
+    </div>
+    <div class="lp-row">
+      <span class="lp-label">Name size</span>
+      <div class="lp-slider-wrap">
+        <input type="range" id="lp-name-size" min="10" max="32" value="14"
+          oninput="lpSlider('lp-name-size','lp-val-ns','px'); lpApply()">
+        <span class="lp-val" id="lp-val-ns">14px</span>
+      </div>
+    </div>
+    <div class="lp-row">
+      <span class="lp-label">Font</span>
+      <select class="lp-font-select" id="lp-font" onchange="lpApply()"></select>
+    </div>
+  </div>
+
+  <!-- LAYOUT -->
+  <div class="lp-sec">
+    <p class="lp-sec-label">Layout</p>
+    <div class="lp-row">
+      <span class="lp-label">Gap</span>
+      <div class="lp-slider-wrap">
+        <input type="range" id="lp-gap" min="0" max="24" value="6"
+          oninput="lpSlider('lp-gap','lp-val-gap','px'); lpApply()">
+        <span class="lp-val" id="lp-val-gap">6px</span>
+      </div>
+    </div>
+    <div class="lp-row">
+      <span class="lp-label">Padding</span>
+      <div class="lp-slider-wrap">
+        <input type="range" id="lp-padding" min="0" max="48" value="16"
+          oninput="lpSlider('lp-padding','lp-val-pad','px'); lpApply()">
+        <span class="lp-val" id="lp-val-pad">16px</span>
+      </div>
+    </div>
+    <div class="lp-row">
+      <span class="lp-label">Max msgs</span>
+      <div class="lp-slider-wrap">
+        <input type="range" id="lp-max" min="1" max="50" value="10"
+          oninput="lpSlider('lp-max','lp-val-max',''); lpApply()">
+        <span class="lp-val" id="lp-val-max">10</span>
+      </div>
+    </div>
+    <div class="lp-row">
+      <span class="lp-label">Direction</span>
+      <div class="lp-seg" id="lp-seg-dir">
+        <div class="lp-seg-btn on" data-v="bottom" onclick="lpSetSeg('lp-seg-dir',this); lpApply()">↑ Bottom</div>
+        <div class="lp-seg-btn" data-v="top" onclick="lpSetSeg('lp-seg-dir',this); lpApply()">↓ Top</div>
+      </div>
+    </div>
+    <div class="lp-row">
+      <span class="lp-label">Fade mode</span>
+      <div class="lp-seg" id="lp-seg-fade">
+        <div class="lp-seg-btn on" data-v="push" onclick="lpSetSeg('lp-seg-fade',this); lpApply()">Push</div>
+        <div class="lp-seg-btn" data-v="timed" onclick="lpSetSeg('lp-seg-fade',this); lpApply()">Timed</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- COLORS -->
+  <div class="lp-sec">
+    <p class="lp-sec-label">Colors</p>
+    <div class="lp-row">
+      <span class="lp-label">Text</span>
+      <div class="lp-color-row">
+        <input type="color" id="lp-col-text" value="#f0ece8" oninput="lpApply()">
+        <span class="lp-val" id="lp-val-textcol" style="font-size:10px">#f0ece8</span>
+      </div>
+    </div>
+    <div class="lp-row">
+      <span class="lp-label">Bubble bg</span>
+      <div class="lp-color-row">
+        <input type="color" id="lp-col-bubble" value="#000000" oninput="lpApply()">
+        <span class="lp-val" id="lp-val-bubcol" style="font-size:10px">#000000</span>
+      </div>
+    </div>
+    <div class="lp-row">
+      <span class="lp-label">Opacity</span>
+      <div class="lp-slider-wrap">
+        <input type="range" id="lp-bubble-op" min="0" max="100" value="55"
+          oninput="lpSlider('lp-bubble-op','lp-val-bop','%'); lpApply()">
+        <span class="lp-val" id="lp-val-bop">55%</span>
+      </div>
+    </div>
+    <div class="lp-row">
+      <span class="lp-label">Style</span>
+      <select class="lp-style-select" id="lp-style" onchange="lpApply()"></select>
+    </div>
+  </div>
+
+  <!-- TOGGLES -->
+  <div class="lp-sec">
+    <p class="lp-sec-label">Options</p>
+    <div class="lp-row">
+      <span class="lp-label">Timestamps</span>
+      <div class="lp-toggle" id="lp-tog-timestamps" onclick="this.classList.toggle('on'); lpApply()"></div>
+    </div>
+    <div class="lp-row">
+      <span class="lp-label">Badges</span>
+      <div class="lp-toggle on" id="lp-tog-badges" onclick="this.classList.toggle('on'); lpApply()"></div>
+    </div>
+    <div class="lp-row">
+      <span class="lp-label">Emotes</span>
+      <div class="lp-toggle on" id="lp-tog-emotes" onclick="this.classList.toggle('on'); lpApply()"></div>
+    </div>
+    <div class="lp-row">
+      <span class="lp-label">Hide cmds</span>
+      <div class="lp-toggle on" id="lp-tog-hidecmds" onclick="this.classList.toggle('on'); lpApply()"></div>
+    </div>
+  </div>
+
+  <!-- KEYBIND -->
+  <div class="lp-sec">
+    <p class="lp-sec-label">Keybind</p>
+    <div class="lp-row">
+      <span class="lp-label">Toggle key</span>
+      <input class="lp-keybind-input" id="lp-keybind" value="`" readonly
+        onclick="startBindCapture()" title="Click then press any key">
+    </div>
+    <p style="font-size:10px;color:var(--muted);margin-top:2px">Click the key box, then press any key to rebind.</p>
+  </div>
+
+  <!-- ACTIONS -->
+  <div class="lp-sec">
+    <p class="lp-sec-label">Actions</p>
+    <button class="lp-btn" onclick="lpSave()">Save &amp; Apply</button>
+    <button class="lp-btn" style="margin-top:6px" onclick="clearChat()">Clear Chat</button>
+    <button class="lp-btn danger" style="margin-top:6px" onclick="backToSetup()">Back to Setup</button>
+  </div>
+</div>
+
+<!-- ═══ SETUP ═══════════════════════════════════════ -->
+<div id="setup">
+  <div class="setup-inner">
+    <p class="s-eyebrow">OBS Widget</p>
+    <h1 class="s-title">Chat Overlay</h1>
+    <p class="s-sub">Minimal, clean Twitch chat for fullscreen or vertical streams. No watermarks. Fully yours.</p>
+
+    <div class="notice">
+      <strong>How it works:</strong> Connects to Twitch chat via IRC WebSocket — no API key needed, just your channel name. Config saves to <code>localStorage</code> so OBS remembers it on every reload.
+    </div>
+
+    <!-- CONNECTION -->
+    <div class="s-sec">
+      <p class="s-sec-label">// 01 — Connection</p>
+      <div class="fg">
+        <div class="field">
+          <label>Channel name</label>
+          <input id="cfg-channel" type="text" placeholder="your_channel">
+        </div>
+        <div class="field">
+          <label>Client ID <span style="color:var(--muted);font-size:10px;text-transform:none;letter-spacing:0">— <a href="https://dev.twitch.tv/console/apps" target="_blank" style="color:var(--accent);text-decoration:none">get one free →</a></span></label>
+          <input id="cfg-clientid" type="text" placeholder="abc123def456..." oninput="updateConnectHint()">
+        </div>
+      </div>
+      <div style="margin-top:12px;display:flex;align-items:center;gap:12px" id="auth-area">
+        <button class="auth-btn" id="connect-btn" onclick="startAuth()" style="opacity:0.45">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z"/></svg>
+          Connect Twitch (for badges)
+        </button>
+        <span id="connect-hint" style="font-size:11px;color:var(--muted)">Enter Client ID to enable. Badges work without this.</span>
+      </div>
+    </div>
+
+    <!-- STYLE PRESETS -->
+    <div class="s-sec">
+      <p class="s-sec-label">// 02 — Style preset</p>
+      <div class="style-cards" id="style-cards"></div>
+    </div>
+
+    <!-- FONT -->
+    <div class="s-sec">
+      <p class="s-sec-label">// 03 — Font</p>
+      <div class="font-cards" id="font-cards"></div>
+    </div>
+
+    <!-- COLORS -->
+    <div class="s-sec">
+      <p class="s-sec-label">// 04 — Colors</p>
+      <div class="fg">
+        <div class="field">
+          <label>Message text color</label>
+          <div class="color-row">
+            <input type="color" id="col-text" value="#f0ece8" oninput="syncHex('col-text','hex-text')">
+            <input class="color-hex" type="text" id="hex-text" value="#f0ece8" oninput="syncColor('hex-text','col-text')">
+          </div>
+        </div>
+        <div class="field">
+          <label>Bubble background</label>
+          <div class="color-row">
+            <input type="color" id="col-bubble" value="#000000" oninput="syncHex('col-bubble','hex-bubble')">
+            <input class="color-hex" type="text" id="hex-bubble" value="#000000" oninput="syncColor('hex-bubble','col-bubble')">
+          </div>
+        </div>
+      </div>
+      <div class="field" style="margin-top:12px">
+        <label>Bubble opacity</label>
+        <div class="slider-row">
+          <input type="range" id="cfg-bubble-opacity" min="0" max="100" value="55" oninput="updateSliderVal('cfg-bubble-opacity','val-bubble-opacity','%'); updateLivePreview()">
+          <span class="slider-val" id="val-bubble-opacity">55%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- TYPOGRAPHY -->
+    <div class="s-sec">
+      <p class="s-sec-label">// 05 — Typography</p>
+      <div class="fg">
+        <div class="field">
+          <label>Message font size</label>
+          <div class="slider-row">
+            <input type="range" id="cfg-font-size" min="10" max="32" value="15" oninput="updateSliderVal('cfg-font-size','val-font-size','px'); updateLivePreview()">
+            <span class="slider-val" id="val-font-size">15px</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Username font size</label>
+          <div class="slider-row">
+            <input type="range" id="cfg-name-size" min="10" max="32" value="14" oninput="updateSliderVal('cfg-name-size','val-name-size','px'); updateLivePreview()">
+            <span class="slider-val" id="val-name-size">14px</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Message gap</label>
+          <div class="slider-row">
+            <input type="range" id="cfg-gap" min="0" max="24" value="6" oninput="updateSliderVal('cfg-gap','val-gap','px'); updateLivePreview()">
+            <span class="slider-val" id="val-gap">6px</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Padding</label>
+          <div class="slider-row">
+            <input type="range" id="cfg-padding" min="0" max="48" value="16" oninput="updateSliderVal('cfg-padding','val-padding','px'); updateLivePreview()">
+            <span class="slider-val" id="val-padding">16px</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BEHAVIOUR -->
+    <div class="s-sec">
+      <p class="s-sec-label">// 06 — Behaviour</p>
+      <div class="fg">
+        <div class="field">
+          <label>Message direction</label>
+          <div class="seg" id="seg-dir">
+            <div class="seg-btn on" data-v="bottom" onclick="setSeg('seg-dir',this)">↑ Bottom up</div>
+            <div class="seg-btn" data-v="top" onclick="setSeg('seg-dir',this)">↓ Top down</div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Message fade</label>
+          <div class="seg" id="seg-fade">
+            <div class="seg-btn on" data-v="push" onclick="setSeg('seg-fade',this)">Push off</div>
+            <div class="seg-btn" data-v="timed" onclick="setSeg('seg-fade',this)">Timed</div>
+          </div>
+        </div>
+        <div class="field" id="fade-time-field" style="display:none">
+          <label>Fade after (seconds)</label>
+          <input id="cfg-fade-secs" type="number" value="8" min="1" max="60">
+        </div>
+        <div class="field">
+          <label>Max messages shown</label>
+          <input id="cfg-max-msgs" type="number" value="10" min="1" max="50">
+        </div>
+        <div class="field">
+          <label>Show timestamps</label>
+          <div class="toggle-row">
+            <span class="toggle-label">Off</span>
+            <div class="toggle" id="tog-timestamps" onclick="toggleToggle('tog-timestamps')"></div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Show badges</label>
+          <div class="toggle-row">
+            <span class="toggle-label">Off</span>
+            <div class="toggle on" id="tog-badges" onclick="toggleToggle('tog-badges')"></div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Show emotes</label>
+          <div class="toggle-row">
+            <span class="toggle-label">Off</span>
+            <div class="toggle on" id="tog-emotes" onclick="toggleToggle('tog-emotes')"></div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Hide commands (!)</label>
+          <div class="toggle-row">
+            <span class="toggle-label">Off</span>
+            <div class="toggle on" id="tog-hide-cmds" onclick="toggleToggle('tog-hide-cmds')"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SIZE -->
+    <div class="s-sec">
+      <p class="s-sec-label">// 07 — Widget size</p>
+      <div class="fg">
+        <div class="field">
+          <label>Width (px)</label>
+          <input id="cfg-w" type="number" value="400" min="200">
+        </div>
+        <div class="field">
+          <label>Height (px)</label>
+          <input id="cfg-h" type="number" value="600" min="200">
+        </div>
+      </div>
+    </div>
+
+    <!-- PREVIEW -->
+    <div class="s-sec">
+      <p class="s-sec-label">// 08 — Preview</p>
+      <div class="preview-area" id="preview-area">
+        <div class="preview-inner" id="preview-inner"></div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" onclick="launch()">Launch Widget →</button>
+      <button class="btn btn-ghost" onclick="injectTestMessages()">Test Messages</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══ CONSTANTS ════════════════════════════════════════
+const LS_KEY = 'chatoverlay_cfg';
+
+const FONTS = [
+  { id: 'inter',     label: 'Inter',      css: "Inter, 'Segoe UI', system-ui, sans-serif",                preview: 'Aa' },
+  { id: 'system',    label: 'System',     css: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", preview: 'Aa' },
+  { id: 'rounded',   label: 'Rounded',    css: "'Trebuchet MS', 'Segoe UI', sans-serif",                   preview: 'Aa' },
+  { id: 'impact',    label: 'Impact',     css: "Impact, 'Arial Narrow', sans-serif",                       preview: 'Aa' },
+  { id: 'georgia',   label: 'Georgia',    css: "Georgia, 'Times New Roman', serif",                        preview: 'Aa' },
+  { id: 'mono',      label: 'Mono',       css: "'Courier New', 'Lucida Console', monospace",               preview: 'Aa' },
+];
+
+const STYLES = [
+  { id: 'bubble',  label: 'Bubble',   bubbleBg: true,  radius: 10, accentBar: 0 },
+  { id: 'pill',    label: 'Pill',     bubbleBg: true,  radius: 99, accentBar: 0 },
+  { id: 'bar',     label: 'Bar',      bubbleBg: true,  radius: 4,  accentBar: 3 },
+  { id: 'minimal', label: 'Minimal',  bubbleBg: false, radius: 0,  accentBar: 0 },
+  { id: 'outline', label: 'Outline',  bubbleBg: false, radius: 6,  accentBar: 0, outline: true },
+  { id: 'compact', label: 'Compact',  bubbleBg: true,  radius: 4,  accentBar: 0, compact: true },
+];
+
+let chosenFont  = 0;
+let chosenStyle = 0;
+let ws = null;
+let msgQueue = [];
+
+// ═══ SETUP UI ═════════════════════════════════════════
+
+function buildFontCards() {
+  document.getElementById('font-cards').innerHTML = FONTS.map((f,i) => `
+    <div class="font-card${i===0?' on':''}" data-i="${i}" onclick="selectFont(${i})" style="font-family:${f.css}">
+      <div class="font-card-preview">${f.preview}</div>
+      <div class="font-card-name">${f.label}</div>
+    </div>`).join('');
+}
+
+function selectFont(i) {
+  chosenFont = i;
+  document.querySelectorAll('.font-card').forEach((c,j) => c.classList.toggle('on', j===i));
+  updateLivePreview();
+}
+
+function buildStyleCards() {
+  document.getElementById('style-cards').innerHTML = STYLES.map((s,i) => {
+    const bg = s.bubbleBg ? 'rgba(0,0,0,0.5)' : 'transparent';
+    const br = s.radius + 'px';
+    const bl = s.accentBar ? `border-left:${s.accentBar}px solid #a855f7;` : '';
+    const bo = s.outline ? 'border:1px solid rgba(255,255,255,0.2);' : '';
+    return `
+      <div class="style-card${i===0?' on':''}" data-i="${i}" onclick="selectStyle(${i})">
+        <div style="background:${bg};border-radius:${br};padding:5px 10px;${bl}${bo}font-size:11px;color:#f0ece8;font-family:Inter,'Segoe UI',sans-serif;max-width:90%">
+          <span style="color:#a855f7;font-weight:600;font-size:10px">User </span>
+          <span>Hello chat!</span>
+        </div>
+        <div class="style-card-label">${s.label}</div>
+      </div>`;
+  }).join('');
+}
+
+function selectStyle(i) {
+  chosenStyle = i;
+  document.querySelectorAll('.style-card').forEach((c,j) => c.classList.toggle('on', j===i));
+  updateLivePreview();
+}
+
+function setSeg(groupId, btn) {
+  const group = document.getElementById(groupId);
+  group.querySelectorAll('.seg-btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  if (groupId === 'seg-fade') {
+    document.getElementById('fade-time-field').style.display =
+      btn.dataset.v === 'timed' ? 'flex' : 'none';
+  }
+  updateLivePreview();
+}
+
+function getSegVal(groupId) {
+  const btn = document.querySelector(`#${groupId} .seg-btn.on`);
+  return btn ? btn.dataset.v : null;
+}
+
+function toggleToggle(id) {
+  document.getElementById(id).classList.toggle('on');
+  updateLivePreview();
+}
+
+function isToggleOn(id) {
+  return document.getElementById(id).classList.contains('on');
+}
+
+function updateSliderVal(sliderId, valId, unit) {
+  document.getElementById(valId).textContent = document.getElementById(sliderId).value + unit;
+}
+
+function syncHex(colorId, hexId) {
+  document.getElementById(hexId).value = document.getElementById(colorId).value;
+  updateLivePreview();
+}
+
+function syncColor(hexId, colorId) {
+  const val = document.getElementById(hexId).value;
+  if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+    document.getElementById(colorId).value = val;
+    updateLivePreview();
+  }
+}
+
+// ═══ LIVE PREVIEW ═════════════════════════════════════
+
+const PREVIEW_MSGS = [
+  { name: 'StreamerFan99', color: '#ff6b6b', text: 'LET\'S GOOO PogChamp' },
+  { name: 'CoolViewer',    color: '#4ecdc4', text: 'That was insane!' },
+  { name: 'ChatKing',      color: '#a855f7', text: 'First time watching, love the stream' },
+];
+
+function updateLivePreview() {
+  const style   = STYLES[chosenStyle];
+  const font    = FONTS[chosenFont];
+  const textCol = document.getElementById('col-text').value;
+  const bubCol  = document.getElementById('col-bubble').value;
+  const bubOp   = parseInt(document.getElementById('cfg-bubble-opacity').value) / 100;
+  const fontSize = document.getElementById('cfg-font-size').value;
+  const nameSize = document.getElementById('cfg-name-size').value;
+  const gap      = document.getElementById('cfg-gap').value;
+  const direction = getSegVal('seg-dir');
+
+  const inner = document.getElementById('preview-inner');
+  inner.style.flexDirection = 'column';
+  inner.style.justifyContent = direction === 'top' ? 'flex-start' : 'flex-end';
+  inner.style.gap = gap + 'px';
+
+  inner.innerHTML = PREVIEW_MSGS.map(m => buildMsgHTML(m, style, font, textCol, bubCol, bubOp, fontSize, nameSize)).join('');
+}
+
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `${r},${g},${b}`;
+}
+
+function buildMsgHTML(msg, style, font, textCol, bubCol, bubOp, fontSize, nameSize) {
+  const bg      = style.bubbleBg ? `rgba(${hexToRgb(bubCol)},${bubOp})` : 'transparent';
+  const bl      = style.accentBar ? `border-left:${style.accentBar}px solid ${msg.color};` : '';
+  const bo      = style.outline ? `border:1px solid rgba(255,255,255,0.15);` : '';
+  const br      = style.radius + 'px';
+  const pad     = style.compact ? '4px 10px' : style.bubbleBg ? '8px 12px' : '2px 0';
+
+  return `
+    <div style="display:flex;align-items:flex-start;gap:6px;max-width:100%">
+      <div style="
+        background:${bg};
+        border-radius:${br};
+        padding:${pad};
+        ${bl}${bo}
+        font-family:${font.css};
+        line-height:1.45;
+        word-break:break-word;
+        backdrop-filter:${style.bubbleBg?'blur(6px)':'none'};
+      ">
+        <span style="color:${msg.color};font-weight:600;font-size:${nameSize}px;margin-right:5px">${msg.name}</span>
+        <span style="color:${textCol};font-size:${fontSize}px">${msg.text}</span>
+      </div>
+    </div>`;
+}
+
+// ═══ SAVE / LOAD ══════════════════════════════════════
+
+function readSetup() {
+  return {
+    channel:      document.getElementById('cfg-channel').value.trim(),
+    clientid:     document.getElementById('cfg-clientid').value.trim(),
+    font:         chosenFont,
+    style:        chosenStyle,
+    textColor:    document.getElementById('col-text').value,
+    bubbleColor:  document.getElementById('col-bubble').value,
+    bubbleOp:     document.getElementById('cfg-bubble-opacity').value,
+    fontSize:     document.getElementById('cfg-font-size').value,
+    nameSize:     document.getElementById('cfg-name-size').value,
+    gap:          document.getElementById('cfg-gap').value,
+    padding:      document.getElementById('cfg-padding').value,
+    direction:    getSegVal('seg-dir'),
+    fadeMode:     getSegVal('seg-fade'),
+    fadeSecs:     document.getElementById('cfg-fade-secs').value,
+    maxMsgs:      document.getElementById('cfg-max-msgs').value,
+    timestamps:   isToggleOn('tog-timestamps'),
+    badges:       isToggleOn('tog-badges'),
+    emotes:       isToggleOn('tog-emotes'),
+    hideCmds:     isToggleOn('tog-hide-cmds'),
+    w:            document.getElementById('cfg-w').value,
+    h:            document.getElementById('cfg-h').value,
+  };
+}
+
+function saveConfig(cfg) {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(cfg)); } catch(e) {}
+}
+
+function loadConfig() {
+  try {
+    const s = localStorage.getItem(LS_KEY);
+    return s ? JSON.parse(s) : null;
+  } catch { return null; }
+}
+
+function applyConfig(s) {
+  if (s.channel)      document.getElementById('cfg-channel').value     = s.channel;
+  if (s.clientid)     document.getElementById('cfg-clientid').value    = s.clientid;
+  if (s.w)            document.getElementById('cfg-w').value           = s.w;
+  if (s.h)            document.getElementById('cfg-h').value           = s.h;
+  if (s.fontSize)     { document.getElementById('cfg-font-size').value  = s.fontSize; document.getElementById('val-font-size').textContent  = s.fontSize + 'px'; }
+  if (s.nameSize)     { document.getElementById('cfg-name-size').value  = s.nameSize; document.getElementById('val-name-size').textContent  = s.nameSize + 'px'; }
+  if (s.gap != null)  { document.getElementById('cfg-gap').value        = s.gap;      document.getElementById('val-gap').textContent        = s.gap + 'px'; }
+  if (s.padding)      { document.getElementById('cfg-padding').value    = s.padding;  document.getElementById('val-padding').textContent    = s.padding + 'px'; }
+  if (s.bubbleOp)     { document.getElementById('cfg-bubble-opacity').value = s.bubbleOp; document.getElementById('val-bubble-opacity').textContent = s.bubbleOp + '%'; }
+  if (s.fadeSecs)     document.getElementById('cfg-fade-secs').value   = s.fadeSecs;
+  if (s.maxMsgs)      document.getElementById('cfg-max-msgs').value    = s.maxMsgs;
+
+  if (s.textColor)   { document.getElementById('col-text').value   = s.textColor;   document.getElementById('hex-text').value   = s.textColor; }
+  if (s.bubbleColor) { document.getElementById('col-bubble').value = s.bubbleColor; document.getElementById('hex-bubble').value = s.bubbleColor; }
+
+  if (s.font != null)  selectFont(s.font);
+  if (s.style != null) selectStyle(s.style);
+
+  if (s.direction) {
+    const btn = document.querySelector(`#seg-dir .seg-btn[data-v="${s.direction}"]`);
+    if (btn) setSeg('seg-dir', btn);
+  }
+  if (s.fadeMode) {
+    const btn = document.querySelector(`#seg-fade .seg-btn[data-v="${s.fadeMode}"]`);
+    if (btn) setSeg('seg-fade', btn);
+  }
+
+  const toggleMap = {
+    timestamps: 'tog-timestamps', badges: 'tog-badges',
+    emotes: 'tog-emotes', hideCmds: 'tog-hide-cmds'
+  };
+  Object.entries(toggleMap).forEach(([key, id]) => {
+    const el = document.getElementById(id);
+    if (s[key] !== undefined) el.classList.toggle('on', s[key]);
+  });
+}
+
+// ═══ LAUNCH ═══════════════════════════════════════════
+
+function launch() {
+  const cfg = readSetup();
+  if (!cfg.channel) { alert('Enter your Twitch channel name.'); return; }
+  saveConfig({ ...cfg, _launch: true });
+  startWidget(cfg);
+}
+
+// ═══ WIDGET ═══════════════════════════════════════════
+
+function startWidget(cfg) {
+  activeCfg = cfg;
+  document.getElementById('setup').style.display = 'none';
+
+  const w = document.getElementById('widget');
+  w.classList.add('show');
+  w.classList.toggle('show-time', cfg.timestamps);
+  w.className = `show${cfg.timestamps ? ' show-time' : ''} dir-${cfg.direction || 'bottom'}`;
+
+  document.body.style.width  = cfg.w + 'px';
+  document.body.style.height = cfg.h + 'px';
+
+  // Apply CSS vars
+  const style = STYLES[cfg.style || 0];
+  const font  = FONTS[cfg.font || 0];
+  const rgb   = hexToRgb(cfg.bubbleColor || '#000000');
+  const op    = (parseInt(cfg.bubbleOp) || 55) / 100;
+
+  const root = document.documentElement.style;
+  root.setProperty('--msg-font',        font.css);
+  root.setProperty('--text-size',       (cfg.fontSize || 15) + 'px');
+  root.setProperty('--name-size',       (cfg.nameSize || 14) + 'px');
+  root.setProperty('--text-color',      cfg.textColor || '#f0ece8');
+  root.setProperty('--bubble-bg',       style.bubbleBg ? `rgba(${rgb},${op})` : 'transparent');
+  root.setProperty('--bubble-radius',   style.radius + 'px');
+  root.setProperty('--accent-bar-width',style.accentBar + 'px');
+  root.setProperty('--msg-gap',         (cfg.gap || 6) + 'px');
+  root.setProperty('--w-padding',       (cfg.padding || 16) + 'px');
+  root.setProperty('--text-weight',     (style.id === 'outline' ? 400 : 400));
+
+  const msgList = document.getElementById('msg-list');
+  if (cfg.direction === 'top') {
+    msgList.style.flexDirection = 'column';
+  }
+
+  // Apply font to messages
+  msgList.style.fontFamily = font.css;
+
+  syncPanelFromCfg(cfg);
+  connectTwitch(cfg);
+}
+
+// ═══ TWITCH IRC ════════════════════════════════════════
+
+function connectTwitch(cfg) {
+  if (ws) { try { ws.close(); } catch(e) {} }
+
+  ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+
+  ws.onopen = () => {
+    const token = localStorage.getItem('chatoverlay_token') || '';
+    const user  = 'justinfan' + Math.floor(10000 + Math.random() * 89999);
+
+    if (token) {
+      ws.send(`PASS oauth:${token}`);
+      ws.send(`NICK ${cfg.channel}`);
+    } else {
+      ws.send(`PASS SCHMOOPIIE`);
+      ws.send(`NICK ${user}`);
+    }
+
+    ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
+    ws.send(`JOIN #${cfg.channel.toLowerCase()}`);
+  };
+
+  ws.onmessage = (e) => {
+    const lines = e.data.split('\r\n');
+    lines.forEach(line => {
+      if (line.startsWith('PING')) { ws.send('PONG :tmi.twitch.tv'); return; }
+      parseIRC(line, cfg);
+    });
+  };
+
+  ws.onclose = () => setTimeout(() => connectTwitch(cfg), 3000);
+  ws.onerror = () => {};
+}
+
+function parseIRC(raw, cfg) {
+  // Parse IRCv3 tags
+  let tags = {};
+  let rest = raw;
+
+  if (raw.startsWith('@')) {
+    const spaceIdx = raw.indexOf(' ');
+    const tagStr = raw.slice(1, spaceIdx);
+    rest = raw.slice(spaceIdx + 1);
+    tagStr.split(';').forEach(t => {
+      const [k,v] = t.split('=');
+      tags[k] = v || '';
+    });
+  }
+
+  // PRIVMSG only
+  const privMatch = rest.match(/^:(\S+)!\S+ PRIVMSG #\S+ :(.*)$/);
+  if (!privMatch) return;
+
+  const username = tags['display-name'] || privMatch[1];
+  const text     = privMatch[2];
+  const color    = tags['color'] || randomColor(username);
+  const badges   = tags['badges'] || '';
+  const emotes   = tags['emotes'] || '';
+
+  // Hide commands
+  if (cfg.hideCmds && text.startsWith('!')) return;
+
+  addMessage({ username, text, color, badges, emotes, cfg });
+}
+
+function randomColor(name) {
+  const colors = ['#ff6b6b','#ffd93d','#6bcb77','#4d96ff','#ff922b','#cc5de8','#74c0fc','#f783ac'];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return colors[Math.abs(hash) % colors.length];
+}
+
+function addMessage({ username, text, color, badges, emotes, cfg }) {
+  const style   = STYLES[cfg.style || 0];
+  const font    = FONTS[cfg.font || 0];
+  const rgb     = hexToRgb(cfg.bubbleColor || '#000000');
+  const op      = (parseInt(cfg.bubbleOp) || 55) / 100;
+  const bg      = style.bubbleBg ? `rgba(${rgb},${op})` : 'transparent';
+  const bl      = style.accentBar ? `border-left:${style.accentBar}px solid ${color};` : '';
+  const bo      = style.outline ? `border:1px solid rgba(255,255,255,0.15);` : '';
+  const pad     = style.compact ? '4px 10px' : style.bubbleBg ? '8px 12px' : '2px 0';
+
+  // Parse emotes into text with images
+  let displayText = escapeHtml(text);
+  if (cfg.emotes && emotes) {
+    displayText = parseEmotes(text, emotes);
+  }
+
+  // Badges
+  let badgeHtml = '';
+  if (cfg.badges && badges) {
+    badgeHtml = parseBadges(badges, cfg.channel);
+  }
+
+  // Timestamp
+  const now  = new Date();
+  const time = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+
+  const msgEl = document.createElement('div');
+  msgEl.className = 'msg';
+  msgEl.innerHTML = `
+    <div class="msg-bubble${style.bubbleBg ? '' : ' no-bubble'}" style="
+      background:${bg};
+      border-radius:${style.radius}px;
+      padding:${pad};
+      ${bl}${bo}
+      font-family:${font.css};
+    ">
+      ${badgeHtml}
+      <span class="msg-name" style="color:${color}">${escapeHtml(username)}</span>
+      <span class="msg-text">${displayText}</span>
+    </div>
+    <span class="msg-time">${time}</span>
+  `;
+
+  const list    = document.getElementById('msg-list');
+  const maxMsgs = parseInt(cfg.maxMsgs) || 10;
+  const fadeMode = cfg.fadeMode || 'push';
+
+  if (cfg.direction === 'top') {
+    list.insertBefore(msgEl, list.firstChild);
+  } else {
+    list.appendChild(msgEl);
+  }
+
+  // Trim old messages
+  while (list.children.length > maxMsgs) {
+    const oldest = cfg.direction === 'top' ? list.lastChild : list.firstChild;
+    if (oldest) list.removeChild(oldest);
+  }
+
+  // Timed fade
+  if (fadeMode === 'timed') {
+    const secs = parseInt(cfg.fadeSecs) || 8;
+    setTimeout(() => {
+      msgEl.classList.add('fade-out');
+      setTimeout(() => { if (msgEl.parentNode) msgEl.parentNode.removeChild(msgEl); }, 400);
+    }, secs * 1000);
+  }
+}
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;');
+}
+
+function parseEmotes(text, emotesStr) {
+  if (!emotesStr) return escapeHtml(text);
+  const replacements = [];
+  emotesStr.split('/').forEach(e => {
+    const [id, positions] = e.split(':');
+    positions.split(',').forEach(pos => {
+      const [start, end] = pos.split('-').map(Number);
+      replacements.push({ start, end, id });
+    });
+  });
+  replacements.sort((a,b) => b.start - a.start);
+  let result = text;
+  replacements.forEach(r => {
+    const word = result.slice(r.start, r.end + 1);
+    result = result.slice(0, r.start)
+      + `<img class="emote" src="https://static-cdn.jtvnw.net/emoticons/v2/${r.id}/default/dark/1.0" alt="${escapeHtml(word)}">`
+      + result.slice(r.end + 1);
+  });
+  return result;
+}
+
+function parseBadges(badgesStr, channel) {
+  const known = {
+    'broadcaster': 'https://static-cdn.jtvnw.net/badges/v1/5527c58c-fb7d-422d-b71b-f309dcb85cc1/1',
+    'moderator':   'https://static-cdn.jtvnw.net/badges/v1/3267646d-33f0-4b17-b3df-f923a41db1d0/1',
+    'subscriber':  'https://static-cdn.jtvnw.net/badges/v1/5d9f2208-5dd8-11e7-8513-2ff4adfae661/1',
+    'vip':         'https://static-cdn.jtvnw.net/badges/v1/b817aba4-fad8-49e2-b88a-7cc744dfa6ec/1',
+    'turbo':       'https://static-cdn.jtvnw.net/badges/v1/bd444ec6-8f34-4bf9-91f4-af1e3428d80f/1',
+    'staff':       'https://static-cdn.jtvnw.net/badges/v1/d97c37be-e3cd-4c9f-91c0-15f1b4327979/1',
+    'partner':     'https://static-cdn.jtvnw.net/badges/v1/d12a2e27-16f6-41d0-ab77-b780518f00a3/1',
+    'premium':     'https://static-cdn.jtvnw.net/badges/v1/a1dd5073-19c3-4911-8cb4-c464a7bc1510/1',
+  };
+  return '<span class="msg-badges">'
+    + badgesStr.split(',').map(b => {
+        const [name] = b.split('/');
+        const url = known[name];
+        return url ? `<img src="${url}" alt="${name}">` : '';
+      }).join('')
+    + '</span>';
+}
+
+// ═══ TEST MESSAGES ════════════════════════════════════
+
+const TEST_DATA = [
+  { username: 'StreamFan99',    color: '#ff6b6b', text: 'LET\'S GOOOOO PogChamp' },
+  { username: 'CoolViewer',     color: '#4ecdc4', text: 'That was actually insane' },
+  { username: 'ChatKing',       color: '#a855f7', text: 'First time here, love the stream!' },
+  { username: 'GoodVibes',      color: '#ffd93d', text: 'KEKW no way that just happened' },
+  { username: 'NightOwl',       color: '#74c0fc', text: 'What was that clip from?' },
+];
+
+let testIdx = 0;
+function injectTestMessages() {
+  const cfg = readSetup();
+  if (!document.getElementById('widget').classList.contains('show')) {
+    // Auto-launch with placeholder channel for preview
+    const testCfg = { ...cfg, channel: cfg.channel || 'test' };
+    saveConfig({ ...testCfg, _launch: true });
+    startWidget(testCfg);
+  }
+  const msg = TEST_DATA[testIdx % TEST_DATA.length];
+  testIdx++;
+  addMessage({ ...msg, badges: '', emotes: '', cfg: readSetup() });
+  setTimeout(() => injectTestMessages(), 1200);
+}
+
+// ═══ AUTH (IMPLICIT OAUTH) ════════════════════════════
+
+function updateConnectHint() {
+  const id   = document.getElementById('cfg-clientid')?.value?.trim();
+  const btn  = document.getElementById('connect-btn');
+  const hint = document.getElementById('connect-hint');
+  if (btn)  btn.style.opacity  = id ? '1' : '0.45';
+  if (hint) {
+    hint.textContent = id ? '✓ Ready to connect.' : 'Enter Client ID to enable. Badges work without this.';
+    hint.style.color = id ? 'var(--green)' : 'var(--muted)';
+  }
+  if (id) localStorage.setItem('chatoverlay_clientid', id);
+}
+
+function startAuth() {
+  const clientId = document.getElementById('cfg-clientid')?.value?.trim()
+    || localStorage.getItem('chatoverlay_clientid');
+  if (!clientId) { alert('Enter your Twitch App Client ID first.\n\nGet one free at dev.twitch.tv/console/apps'); return; }
+  // Save setup state across redirect
+  sessionStorage.setItem('chatoverlay_setup', JSON.stringify(readSetup()));
+  const redir  = encodeURIComponent(location.href.split('?')[0].split('#')[0]);
+  const scopes = encodeURIComponent('chat:read');
+  location.href = `https://id.twitch.tv/oauth2/authorize?response_type=token&client_id=${clientId}&redirect_uri=${redir}&scope=${scopes}`;
+}
+
+function checkOAuthReturn() {
+  if (!location.hash.includes('access_token')) return false;
+  const tok = new URLSearchParams(location.hash.slice(1)).get('access_token');
+  if (!tok) return false;
+  localStorage.setItem('chatoverlay_token', tok);
+  history.replaceState(null, '', location.pathname + location.search);
+  return true;
+}
+
+function setAuthConnected() {
+  document.getElementById('auth-area').innerHTML = `
+    <div class="auth-ok"><span class="auth-dot"></span> Twitch connected — badges enabled
+      <button class="btn btn-ghost" style="padding:4px 12px;font-size:12px;margin-left:8px" onclick="disconnectAuth()">Disconnect</button>
+    </div>`;
+}
+
+function disconnectAuth() {
+  localStorage.removeItem('chatoverlay_token');
+  document.getElementById('auth-area').innerHTML = `
+    <button class="auth-btn" id="connect-btn" onclick="startAuth()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714z"/></svg>
+      Connect Twitch (for badges)
+    </button>
+    <span id="connect-hint" style="font-size:11px;color:var(--muted)">Disconnected.</span>`;
+  updateConnectHint();
+}
+
+// ═══ LIVE PANEL ═══════════════════════════════════════
+
+let panelOpen    = false;
+let toggleKey    = '`';
+let capturingKey = false;
+let activeCfg    = null; // current live config reference
+
+function buildLivePanel() {
+  // Populate font select
+  const fontSel = document.getElementById('lp-font');
+  fontSel.innerHTML = FONTS.map((f,i) => `<option value="${i}">${f.label}</option>`).join('');
+
+  // Populate style select
+  const styleSel = document.getElementById('lp-style');
+  styleSel.innerHTML = STYLES.map((s,i) => `<option value="${i}">${s.label}</option>`).join('');
+}
+
+function syncPanelFromCfg(cfg) {
+  if (!cfg) return;
+  activeCfg = cfg;
+
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+  const setToggle = (id, on) => { const el = document.getElementById(id); if (el) el.classList.toggle('on', !!on); };
+
+  set('lp-font-size',  cfg.fontSize  || 15);  document.getElementById('lp-val-fs').textContent  = (cfg.fontSize  || 15) + 'px';
+  set('lp-name-size',  cfg.nameSize  || 14);  document.getElementById('lp-val-ns').textContent  = (cfg.nameSize  || 14) + 'px';
+  set('lp-gap',        cfg.gap       || 6);   document.getElementById('lp-val-gap').textContent = (cfg.gap       || 6)  + 'px';
+  set('lp-padding',    cfg.padding   || 16);  document.getElementById('lp-val-pad').textContent = (cfg.padding   || 16) + 'px';
+  set('lp-max',        cfg.maxMsgs   || 10);  document.getElementById('lp-val-max').textContent = (cfg.maxMsgs   || 10);
+  set('lp-bubble-op',  cfg.bubbleOp  || 55);  document.getElementById('lp-val-bop').textContent = (cfg.bubbleOp  || 55) + '%';
+  set('lp-col-text',   cfg.textColor   || '#f0ece8');
+  set('lp-col-bubble', cfg.bubbleColor || '#000000');
+  set('lp-font',       cfg.font   ?? 0);
+  set('lp-style',      cfg.style  ?? 0);
+
+  // Direction seg
+  const dirBtns = document.querySelectorAll('#lp-seg-dir .lp-seg-btn');
+  dirBtns.forEach(b => b.classList.toggle('on', b.dataset.v === (cfg.direction || 'bottom')));
+
+  // Fade seg
+  const fadeBtns = document.querySelectorAll('#lp-seg-fade .lp-seg-btn');
+  fadeBtns.forEach(b => b.classList.toggle('on', b.dataset.v === (cfg.fadeMode || 'push')));
+
+  setToggle('lp-tog-timestamps', cfg.timestamps);
+  setToggle('lp-tog-badges',     cfg.badges !== false);
+  setToggle('lp-tog-emotes',     cfg.emotes !== false);
+  setToggle('lp-tog-hidecmds',   cfg.hideCmds !== false);
+}
+
+function lpSlider(sliderId, valId, unit) {
+  document.getElementById(valId).textContent = document.getElementById(sliderId).value + unit;
+}
+
+function lpSetSeg(groupId, btn) {
+  document.querySelectorAll(`#${groupId} .lp-seg-btn`).forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+}
+
+function lpGetSeg(groupId) {
+  const btn = document.querySelector(`#${groupId} .lp-seg-btn.on`);
+  return btn ? btn.dataset.v : null;
+}
+
+function lpIsOn(id) {
+  return document.getElementById(id)?.classList.contains('on') ?? false;
+}
+
+function lpApply() {
+  if (!activeCfg) return;
+
+  const newCfg = {
+    ...activeCfg,
+    fontSize:    parseInt(document.getElementById('lp-font-size').value),
+    nameSize:    parseInt(document.getElementById('lp-name-size').value),
+    gap:         parseInt(document.getElementById('lp-gap').value),
+    padding:     parseInt(document.getElementById('lp-padding').value),
+    maxMsgs:     parseInt(document.getElementById('lp-max').value),
+    bubbleOp:    parseInt(document.getElementById('lp-bubble-op').value),
+    textColor:   document.getElementById('lp-col-text').value,
+    bubbleColor: document.getElementById('lp-col-bubble').value,
+    font:        parseInt(document.getElementById('lp-font').value),
+    style:       parseInt(document.getElementById('lp-style').value),
+    direction:   lpGetSeg('lp-seg-dir'),
+    fadeMode:    lpGetSeg('lp-seg-fade'),
+    timestamps:  lpIsOn('lp-tog-timestamps'),
+    badges:      lpIsOn('lp-tog-badges'),
+    emotes:      lpIsOn('lp-tog-emotes'),
+    hideCmds:    lpIsOn('lp-tog-hidecmds'),
+  };
+
+  activeCfg = newCfg;
+
+  // Update color hex labels
+  document.getElementById('lp-val-textcol').textContent = newCfg.textColor;
+  document.getElementById('lp-val-bubcol').textContent  = newCfg.bubbleColor;
+
+  // Apply CSS vars live
+  const style = STYLES[newCfg.style || 0];
+  const font  = FONTS[newCfg.font  || 0];
+  const rgb   = hexToRgb(newCfg.bubbleColor || '#000000');
+  const op    = (newCfg.bubbleOp || 55) / 100;
+  const root  = document.documentElement.style;
+
+  root.setProperty('--text-size',         newCfg.fontSize + 'px');
+  root.setProperty('--name-size',         newCfg.nameSize + 'px');
+  root.setProperty('--text-color',        newCfg.textColor);
+  root.setProperty('--bubble-bg',         style.bubbleBg ? `rgba(${rgb},${op})` : 'transparent');
+  root.setProperty('--bubble-radius',     style.radius + 'px');
+  root.setProperty('--accent-bar-width',  style.accentBar + 'px');
+  root.setProperty('--msg-gap',           newCfg.gap + 'px');
+  root.setProperty('--w-padding',         newCfg.padding + 'px');
+
+  // Update font on msg-list
+  document.getElementById('msg-list').style.fontFamily = font.css;
+
+  // Direction
+  const widget = document.getElementById('widget');
+  widget.className = `show${newCfg.timestamps ? ' show-time' : ''} dir-${newCfg.direction || 'bottom'}`;
+
+  // Trim to new max
+  const list = document.getElementById('msg-list');
+  while (list.children.length > newCfg.maxMsgs) {
+    const oldest = newCfg.direction === 'top' ? list.lastChild : list.firstChild;
+    if (oldest) list.removeChild(oldest);
+  }
+}
+
+function lpSave() {
+  if (!activeCfg) return;
+  saveConfig({ ...activeCfg, _launch: true });
+  // Flash the save button
+  const btn = document.querySelector('.lp-btn');
+  btn.textContent = '✓ Saved!';
+  setTimeout(() => btn.textContent = 'Save & Apply', 1500);
+}
+
+function openPanel() {
+  document.getElementById('live-panel').classList.add('open');
+  panelOpen = true;
+}
+
+function closePanel() {
+  document.getElementById('live-panel').classList.remove('open');
+  panelOpen = false;
+}
+
+function togglePanel() {
+  panelOpen ? closePanel() : openPanel();
+}
+
+function clearChat() {
+  document.getElementById('msg-list').innerHTML = '';
+}
+
+function backToSetup() {
+  closePanel();
+  document.getElementById('widget').classList.remove('show');
+  document.getElementById('setup').style.display = 'block';
+  if (activeCfg) applyConfig(activeCfg);
+}
+
+// ─── Keybind capture ─────────────────────────────────
+function startBindCapture() {
+  capturingKey = true;
+  const el = document.getElementById('lp-keybind');
+  el.value = '...';
+  el.style.color = '#ffd93d';
+}
+
+document.addEventListener('keydown', (e) => {
+  if (capturingKey) {
+    e.preventDefault();
+    toggleKey = e.key;
+    const el = document.getElementById('lp-keybind');
+    if (el) { el.value = e.key === ' ' ? 'Space' : e.key; el.style.color = ''; }
+    capturingKey = false;
+    return;
+  }
+
+  // Only fire keybind when widget is visible
+  if (!document.getElementById('widget').classList.contains('show')) return;
+  if (e.key === toggleKey) togglePanel();
+});
+
+// ═══ INIT ═════════════════════════════════════════════
+
+buildFontCards();
+buildStyleCards();
+buildLivePanel();
+updateLivePreview();
+
+(function init() {
+  // Restore stored clientid
+  const storedCid = localStorage.getItem('chatoverlay_clientid');
+  if (storedCid) {
+    const el = document.getElementById('cfg-clientid');
+    if (el) el.value = storedCid;
+  }
+
+  // Check if returning from OAuth redirect
+  if (checkOAuthReturn()) {
+    const pre = JSON.parse(sessionStorage.getItem('chatoverlay_setup') || '{}');
+    sessionStorage.removeItem('chatoverlay_setup');
+    if (pre && Object.keys(pre).length) {
+      applyConfig(pre);
+      updateLivePreview();
+    }
+    setAuthConnected();
+    updateConnectHint();
+    return;
+  }
+
+  // Show connected state if token already stored
+  if (localStorage.getItem('chatoverlay_token')) setAuthConnected();
+  updateConnectHint();
+
+  const saved = loadConfig();
+  if (!saved) return;
+  applyConfig(saved);
+  updateLivePreview();
+  if (saved._launch && saved.channel) {
+    startWidget(saved);
+    syncPanelFromCfg(saved);
+  }
+})();
+</script>
+</body>
+</html>
