@@ -2,7 +2,8 @@
 
 A free, minimal Twitch chat overlay for OBS and Streamlabs. Clean, fast, fully configurable — no watermarks, no subscriptions, no third-party tools required.
 
-![Chat Overlay Preview](preview.png)
+<img width="399" height="192" alt="image" src="https://github.com/user-attachments/assets/ff125900-1139-405d-9db2-6e066214f5e3" />
+
 
 ---
 
