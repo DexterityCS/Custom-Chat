@@ -815,7 +815,7 @@ input[type=range] {
       <div class="fg">
         <div class="field">
           <label>Channel name</label>
-          <input id="cfg-channel" type="text" placeholder="your_channel">
+          <input id="cfg-channel" type="text" placeholder="your_channel" autocomplete="off">
         </div>
         <div class="field">
           <label>Client ID <span style="color:var(--muted);font-size:10px;text-transform:none;letter-spacing:0">— <a href="https://dev.twitch.tv/console/apps" target="_blank" style="color:var(--accent);text-decoration:none">get one free →</a></span></label>
@@ -1200,7 +1200,7 @@ function loadConfig() {
 }
 
 function applyConfig(s) {
-  if (s.channel)      document.getElementById('cfg-channel').value     = s.channel;
+  // Channel name intentionally not restored — user should enter it each time
   if (s.clientid)     document.getElementById('cfg-clientid').value    = s.clientid;
   if (s.w)            document.getElementById('cfg-w').value           = s.w;
   if (s.h)            document.getElementById('cfg-h').value           = s.h;
@@ -1243,7 +1243,16 @@ function launch() {
   const cfg = readSetup();
   if (!cfg.channel) { alert('Enter your Twitch channel name.'); return; }
   saveConfig({ ...cfg, _launch: true });
+
+  const alreadyLive    = document.getElementById('widget').classList.contains('show');
+  const channelChanged = activeCfg && activeCfg.channel !== cfg.channel;
+
   startWidget(cfg);
+
+  // Only reconnect IRC if channel changed or not yet connected
+  if (!alreadyLive || channelChanged) {
+    connectTwitch(cfg);
+  }
 }
 
 // ═══ WIDGET ═══════════════════════════════════════════
@@ -1253,41 +1262,37 @@ function startWidget(cfg) {
   document.getElementById('setup').style.display = 'none';
 
   const w = document.getElementById('widget');
-  w.classList.add('show');
-  w.classList.toggle('show-time', cfg.timestamps);
   w.className = `show${cfg.timestamps ? ' show-time' : ''} dir-${cfg.direction || 'bottom'}`;
 
   document.body.style.width  = cfg.w + 'px';
   document.body.style.height = cfg.h + 'px';
 
   // Apply CSS vars
-  const style = STYLES[cfg.style || 0];
-  const font  = FONTS[cfg.font || 0];
-  const rgb   = hexToRgb(cfg.bubbleColor || '#000000');
-  const op    = (parseInt(cfg.bubbleOp) || 55) / 100;
-
-  const root = document.documentElement.style;
-  root.setProperty('--msg-font',        font.css);
-  root.setProperty('--text-size',       (cfg.fontSize || 15) + 'px');
-  root.setProperty('--name-size',       (cfg.nameSize || 14) + 'px');
-  root.setProperty('--text-color',      cfg.textColor || '#f0ece8');
-  root.setProperty('--bubble-bg',       style.bubbleBg ? `rgba(${rgb},${op})` : 'transparent');
-  root.setProperty('--bubble-radius',   style.radius + 'px');
-  root.setProperty('--accent-bar-width',style.accentBar + 'px');
-  root.setProperty('--msg-gap',         (cfg.gap || 6) + 'px');
-  root.setProperty('--w-padding',       (cfg.padding || 16) + 'px');
-  root.setProperty('--text-weight',     (style.id === 'outline' ? 400 : 400));
+  applyAppearance(cfg);
 
   const msgList = document.getElementById('msg-list');
-  if (cfg.direction === 'top') {
-    msgList.style.flexDirection = 'column';
-  }
-
-  // Apply font to messages
-  msgList.style.fontFamily = font.css;
+  msgList.style.flexDirection = cfg.direction === 'top' ? 'column' : '';
+  msgList.style.fontFamily    = FONTS[cfg.font || 0].css;
 
   syncPanelFromCfg(cfg);
-  connectTwitch(cfg);
+}
+
+function applyAppearance(cfg) {
+  const style = STYLES[cfg.style || 0];
+  const font  = FONTS[cfg.font  || 0];
+  const rgb   = hexToRgb(cfg.bubbleColor || '#000000');
+  const op    = (parseInt(cfg.bubbleOp)  || 55) / 100;
+
+  const root = document.documentElement.style;
+  root.setProperty('--msg-font',         font.css);
+  root.setProperty('--text-size',        (cfg.fontSize || 15) + 'px');
+  root.setProperty('--name-size',        (cfg.nameSize || 14) + 'px');
+  root.setProperty('--text-color',       cfg.textColor || '#f0ece8');
+  root.setProperty('--bubble-bg',        style.bubbleBg ? `rgba(${rgb},${op})` : 'transparent');
+  root.setProperty('--bubble-radius',    style.radius + 'px');
+  root.setProperty('--accent-bar-width', style.accentBar + 'px');
+  root.setProperty('--msg-gap',          (cfg.gap     || 6)  + 'px');
+  root.setProperty('--w-padding',        (cfg.padding || 16) + 'px');
 }
 
 // ═══ TWITCH IRC ════════════════════════════════════════
@@ -1491,19 +1496,31 @@ const TEST_DATA = [
   { username: 'NightOwl',       color: '#74c0fc', text: 'What was that clip from?' },
 ];
 
-let testIdx = 0;
+let testIdx      = 0;
+let testInterval = null;
+
 function injectTestMessages() {
   const cfg = readSetup();
   if (!document.getElementById('widget').classList.contains('show')) {
-    // Auto-launch with placeholder channel for preview
     const testCfg = { ...cfg, channel: cfg.channel || 'test' };
     saveConfig({ ...testCfg, _launch: true });
     startWidget(testCfg);
   }
-  const msg = TEST_DATA[testIdx % TEST_DATA.length];
-  testIdx++;
-  addMessage({ ...msg, badges: '', emotes: '', cfg: readSetup() });
-  setTimeout(() => injectTestMessages(), 1200);
+
+  // Stop any existing test loop first
+  if (testInterval) { clearInterval(testInterval); testInterval = null; }
+
+  // Fire one immediately then loop
+  const fire = () => {
+    // Don't fire if setup is visible
+    if (document.getElementById('setup').style.display !== 'none') return;
+    const msg = TEST_DATA[testIdx % TEST_DATA.length];
+    testIdx++;
+    addMessage({ ...msg, badges: '', emotes: '', cfg: readSetup() });
+  };
+
+  fire();
+  testInterval = setInterval(fire, 1200);
 }
 
 // ═══ AUTH (IMPLICIT OAUTH) ════════════════════════════
@@ -1654,26 +1671,13 @@ function lpApply() {
   document.getElementById('lp-val-textcol').textContent = newCfg.textColor;
   document.getElementById('lp-val-bubcol').textContent  = newCfg.bubbleColor;
 
-  // Apply CSS vars live
-  const style = STYLES[newCfg.style || 0];
-  const font  = FONTS[newCfg.font  || 0];
-  const rgb   = hexToRgb(newCfg.bubbleColor || '#000000');
-  const op    = (newCfg.bubbleOp || 55) / 100;
-  const root  = document.documentElement.style;
-
-  root.setProperty('--text-size',         newCfg.fontSize + 'px');
-  root.setProperty('--name-size',         newCfg.nameSize + 'px');
-  root.setProperty('--text-color',        newCfg.textColor);
-  root.setProperty('--bubble-bg',         style.bubbleBg ? `rgba(${rgb},${op})` : 'transparent');
-  root.setProperty('--bubble-radius',     style.radius + 'px');
-  root.setProperty('--accent-bar-width',  style.accentBar + 'px');
-  root.setProperty('--msg-gap',           newCfg.gap + 'px');
-  root.setProperty('--w-padding',         newCfg.padding + 'px');
+  // Apply appearance via shared function
+  applyAppearance(newCfg);
 
   // Update font on msg-list
-  document.getElementById('msg-list').style.fontFamily = font.css;
+  document.getElementById('msg-list').style.fontFamily = FONTS[newCfg.font || 0].css;
 
-  // Direction
+  // Direction + timestamps
   const widget = document.getElementById('widget');
   widget.className = `show${newCfg.timestamps ? ' show-time' : ''} dir-${newCfg.direction || 'bottom'}`;
 
@@ -1714,7 +1718,27 @@ function clearChat() {
 
 function backToSetup() {
   closePanel();
+
+  // Kill the IRC connection so messages stop firing
+  if (ws) {
+    ws.onclose = null; // prevent auto-reconnect
+    try { ws.close(); } catch(e) {}
+    ws = null;
+  }
+
+  // Clear _launch so OBS reload doesn't auto-launch
+  try {
+    const saved = JSON.parse(localStorage.getItem(LS_KEY) || '{}');
+    delete saved._launch;
+    localStorage.setItem(LS_KEY, JSON.stringify(saved));
+  } catch(e) {}
+
+  // Clear test message interval if running
+  clearInterval(testInterval);
+  testInterval = null;
+
   document.getElementById('widget').classList.remove('show');
+  document.getElementById('msg-list').innerHTML = '';
   document.getElementById('setup').style.display = 'block';
   if (activeCfg) applyConfig(activeCfg);
 }
@@ -1781,6 +1805,7 @@ updateLivePreview();
   if (saved._launch && saved.channel) {
     startWidget(saved);
     syncPanelFromCfg(saved);
+    connectTwitch(saved);
   }
 })();
 </script>
