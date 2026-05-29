@@ -2,7 +2,7 @@
 
 A free, minimal Twitch chat overlay for OBS and Streamlabs. Clean, fast, fully configurable — no watermarks, no subscriptions, no third-party tools required.
 
-<img width="399" height="192" alt="image" src="https://github.com/user-attachments/assets/ff125900-1139-405d-9db2-6e066214f5e3" />
+<img width="399" height="192" alt="image" src="https://github.com/user-attachments/assets/8bd60567-5b26-4e33-81e4-4f90bee4c983" />
 
 
 ---
@@ -17,9 +17,21 @@ A free, minimal Twitch chat overlay for OBS and Streamlabs. Clean, fast, fully c
 - **Message direction** — bottom-up or top-down
 - **Fade modes** — push off (oldest disappears when list fills) or timed fade after N seconds
 - **Toggles** — timestamps, badges, emotes, hide `!` commands
-- **Live settings panel** — press `` ` `` while the widget is running to adjust anything without reloading
+- **Live settings panel** — press `` ` `` anytime while the widget is running to adjust anything without reloading
 - **OBS-safe** — uses `localStorage`, no `history.replaceState` errors
 - **No external network requests** — all fonts are system fonts
+
+---
+
+## How it works
+
+1. Open the page — the **setup UI** always loads first
+2. Configure your channel, style, and options
+3. Click **Launch Widget →** — setup disappears and the overlay goes live
+4. Press `` ` `` at any time to open the **live settings panel** and adjust things on the fly
+5. From the live panel, click **Back to Setup** to return to the full setup UI
+
+Your settings are saved to `localStorage` automatically so they're pre-filled next time you open the page.
 
 ---
 
@@ -39,7 +51,7 @@ Open `index.html` directly in a browser. Works fine for personal use.
 
 ### 2. Configure
 
-Open the page in your browser. You'll see the setup UI:
+Open the page in your browser. The setup UI will be visible. Fill in:
 
 | Section | What to fill in |
 |---|---|
@@ -65,43 +77,43 @@ Click **Launch Widget →** when done.
 4. Check **Shutdown source when not visible** and **Refresh browser when scene becomes active**
 5. Click OK
 
-Your config saves to `localStorage` automatically — the widget reconnects and restores your settings every time OBS loads it.
+The setup page will show briefly when OBS loads — click **Launch Widget →** to start the overlay.
 
 ---
 
 ## Badges (optional)
 
-Badges require a Twitch OAuth token. The widget handles this automatically:
+Badges require Twitch OAuth. The widget handles this automatically — no token pasting required:
 
 1. Go to [dev.twitch.tv/console/apps](https://dev.twitch.tv/console/apps) and create a free app
-2. Set the OAuth redirect URI to your widget's URL (GitHub Pages URL or `http://localhost` for local use)
-3. Copy your Client ID and paste it into the setup UI
-4. Click **Connect Twitch** — you'll be redirected to Twitch to log in
-5. After approving, you'll be redirected back and badges will be enabled
+2. Set the OAuth redirect URI to your widget's URL (your GitHub Pages URL, or `http://localhost` for local use)
+3. Paste your Client ID into the setup UI
+4. Click **Connect Twitch** — you'll be redirected to Twitch to approve
+5. After approving, you'll land back on the setup page with badges enabled
 
-The token is stored silently in `localStorage` — you'll never see or paste a token string.
+The token is stored silently in `localStorage` — you'll never see or handle a token string.
 
-If you skip this step, the widget still works perfectly — it just won't show badges.
+If you skip this, the widget still works perfectly — it just won't show badges.
 
 ---
 
 ## Live Settings Panel
 
-Press `` ` `` (backtick) while the widget is running to open a settings panel without reloading OBS.
+Press `` ` `` (backtick) while the widget is running to open the settings panel. Changes apply instantly.
 
-**What you can change live:**
+**What you can change:**
 - Font size and name size
 - Font family and message style
 - Text color, bubble color, opacity
 - Message gap, padding, max messages
-- Direction and fade mode
-- Timestamps, badges, emotes, hide commands
+- Direction (bottom-up / top-down) and fade mode
+- Timestamps, badges, emotes, hide `!` commands
 
-**Other controls:**
-- **Save & Apply** — writes changes to `localStorage` so they persist on reload
-- **Clear Chat** — wipes all messages from screen instantly
-- **Back to Setup** — returns to the full setup UI
-- **Keybind** — click the key box and press any key to change the toggle shortcut
+**Controls:**
+- **Save & Apply** — writes to `localStorage` so changes persist on OBS reload
+- **Clear Chat** — wipes all visible messages instantly
+- **Back to Setup** — kills the connection and returns to the full setup UI
+- **Keybind** — click the key box and press any key to change the panel toggle shortcut
 
 ---
 
@@ -113,7 +125,7 @@ Press `` ` `` (backtick) while the widget is running to open a settings panel wi
 | **Pill** | Fully rounded pill-shaped background |
 | **Bar** | Flat background with a colored left border matching the username color |
 | **Minimal** | No background — text only |
-| **Outline** | No background but a subtle white border |
+| **Outline** | Subtle border, no background fill |
 | **Compact** | Tighter padding, denser layout |
 
 ---
